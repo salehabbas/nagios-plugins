@@ -1,0 +1,62 @@
+#! /usr/bin/env python
+
+import time
+import subprocess
+import re
+import argparse
+import socket
+
+def getTimeString(cpath):
+    notAfter = subprocess.Popen(["openssl", "x509", "-enddate", "-noout", "-in", cpath], stdout=subprocess.PIPE)
+    notAfter = notAfter.stdout.read()
+    end = re.search("notAfter=", notAfter).end()
+    return notAfter[end:].rstrip()
+
+
+def parseMe(timeString):
+    struct_time = time.strptime(timeString, "%b %d %H:%M:%S %Y %Z")
+    return struct_time
+
+def getTimeDelta(stime):
+    # return time delta in days
+    now = time.localtime();
+    return (time.mktime(stime) - time.mktime(now)) / (60 * 60 * 24)
+
+def parse_argument(args):
+    cthreshold = args.critical
+    wthreshold = args.warning
+    path = args.path
+
+    tstring = getTimeString(path)
+    tstruct = parseMe(tstring)
+    ndays = getTimeDelta(tstruct)
+
+    if ndays <= int(cthreshold):
+        status=2
+        msg = 'CRITICAL - Certificate expires in %d days' % (ndays)
+    elif  ndays <= int(wthreshold) and ndays > int(cthreshold):
+        status=1
+        msg = 'WARNING - Certificate expires in %d days' % (ndays)
+    elif ndays > int(wthreshold):
+        status=0
+        msg = 'OK - Certificate expires in %d days' % (ndays)
+    else:
+        status=3
+        msg = 'UNKNOWN'
+
+    print "%s;MYSQL SSL Certificate;%s;%s" % (socket.gethostname(), status, msg)
+    
+
+def main():
+    parser = argparse.ArgumentParser(description='check_ssl_certificate')
+
+    parser.add_argument('-c', action="store", dest="critical", help='Set Critical Threshold')
+    parser.add_argument('-w', action="store", dest="warning", help='Set Warning Threshold')
+    parser.add_argument('-p', action="store", dest="path", help='Set Cert Path')
+
+
+    args = parser.parse_args()
+    parse_argument(args)
+
+if __name__ == '__main__':
+        main()
